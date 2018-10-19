@@ -1,11 +1,5 @@
 import pygame
 import time
-# pygame.init()
-
-# BLACK = (0, 0, 0)  # colours for use in window
-# P1_COLOUR = (0, 255, 255)  # player 1 trail colour
-# P2_COLOUR = (255, 0, 255)  # player 2 trail colour
-
 
 class Player:
     def __init__(self, x, y, bearing, color, speed=1, boost_multiplier=1, num_boosts=3, ai_controller=None):
@@ -21,15 +15,8 @@ class Player:
         self.num_boosts_left = num_boosts
         self.boost_start_time = time.time()  # used to control boost length
         self.bounding_box = pygame.Rect(self.x - 1, self.y - 1, 2, 2)  # player rect object
-        self.path = [self.bounding_box]
+        self.path = []
         self.ai_controller = ai_controller
-
-    def draw(self):
-        """
-        draws player
-        """
-        self.bounding_box = pygame.Rect(self.x - 1, self.y - 1, 2, 2)  # redefines rect
-        pygame.draw.rect(screen, self.color, self.bounding_box, 0)  # draws player onto screen
 
     def move(self):
         """
@@ -37,6 +24,7 @@ class Player:
         """
         self.x += self.bearing[0] * self.boost_multiplier
         self.y += self.bearing[1] * self.boost_multiplier
+        self.path.append(self.bounding_box)
         self.bounding_box = pygame.Rect(self.x - 1, self.y - 1, 2, 2)
 
     def boost(self):
@@ -49,20 +37,24 @@ class Player:
             self.boost_start_time = time.time()
 
 class Game:
-    def __init__(self, width=600, height=660, headless=False):
+    def __init__(self, width=600, height=660, headless=False, players=None):
         """
         sets game's initial values
         """
         self.width = width
         self.height = height
         self.offset = abs(height - width)
-        self.players = self.default_players()
+        if players:
+            self.players_generator = players
+            self.players = players()
+        else:
+            self.players_generator = self.default_players
+            self.players = self.default_players()
         self.scores = [0, 0]
         self.walls = [pygame.Rect(0, self.offset, 15, height),
                       pygame.Rect(0, self.offset, width, 15),
                       pygame.Rect(width - 15, self.offset, 15, height),
                       pygame.Rect(0, height - 15, width, 15)]
-        self.time_path_collision_last_checked = time.time()
 
         self.headless = headless
         if not headless:
@@ -84,19 +76,21 @@ class Game:
         :return: Whether quit was NOT triggered
         :rtype: boolean
         """
-        if not self.headless:
-            input_events = pygame.event.get()
+        if self.headless:
+            return True
+
+        input_events = pygame.event.get()
 
         p1 = self.players[0]
         if p1.ai_controller:
             # remove all user key events for wasd + tab
-            input_events = list(filter(lambda event: event.key != pygame.K_w or event.key != pygame.K_a or event.key != pygame.K_s or event.key != pygame.K_d or event.key != pygame.K_TAB, input_events))
+            input_events = list(filter(lambda event: event.type != pygame.KEYDOWN or event.key != pygame.K_w or event.key != pygame.K_a or event.key != pygame.K_s or event.key != pygame.K_d or event.key != pygame.K_TAB, input_events))
             input_events += p1.ai_controller()
         
         p2 = self.players[1]
         if p2.ai_controller:
             # remove all user key presses for arrow keys + rshift
-            input_events = list(filter(lambda event: event.key != pygame.K_UP or event.key != pygame.K_LEFT or event.key != pygame.K_DOWN or event.key != pygame.K_RIGHT or event.key != pygame.K_RSHIFT, input_events))
+            input_events = list(filter(lambda event: event.type != pygame.KEYDOWN or event.key != pygame.K_UP or event.key != pygame.K_LEFT or event.key != pygame.K_DOWN or event.key != pygame.K_RIGHT or event.key != pygame.K_RSHIFT, input_events))
             input_events += p2.ai_controller()
 
         for event in input_events:
@@ -150,12 +144,12 @@ class Game:
             if self.players[i].bounding_box.collidelist(self.walls) > -1:
                 collided_players_indices.append(i)
 
-            # check for path collisions if haven't checked in 0.1s
-            if (time.time() - self.time_path_collision_last_checked) >= 0.1:
-                self.time_path_collision_last_checked = time.time()
-
-                if self.players[i].bounding_box in self.players[0].path or self.players[i] in self.players[1].path:
-                    collided_players_indices.append(i)
+            # check for path collisions
+            last_bounding_box = None
+            if self.players[i].path: last_bounding_box = self.players[i].path.pop()
+            if self.players[i].bounding_box in self.players[0].path or self.players[i].bounding_box in self.players[1].path:
+                collided_players_indices.append(i)
+            if last_bounding_box: self.players[i].path.append(last_bounding_box)
 
         if len(collided_players_indices) > 0:
             player_losses = {0: 0, 1: 0}
@@ -166,16 +160,16 @@ class Game:
             if player_losses[1] == 0:
                 self.scores[1] += 1
 
-            self.players = self.default_players()
+            self.players = self.players_generator()
 
     def drawObjects(self):
         for i in range(2):
             # draw and move player, including path trail
+            self.players[i].move()
             if not self.headless:
                 pygame.draw.rect(self.screen, self.players[i].color, self.players[i].bounding_box, 0)
                 for path_bit in self.players[i].path:
                     pygame.draw.rect(self.screen, self.players[i].color, path_bit)
-            self.players[i].move()
 
         # draw walls
         for wall in self.walls:
@@ -201,108 +195,3 @@ class Game:
 
         if not self.headless:
             pygame.quit()
-
-tron_game = Game()
-tron_game.run()
-
-# width, height = 600, 660  # window dimensions
-# offset = abs(height - width)  # vertical space at top of window
-# screen = pygame.display.set_mode((width, height))  # creates window
-# pygame.display.set_caption("Tron")  # sets window title
-# def new_game():
-#     new_p1 = Player(50, (height + offset) / 2, (2, 0), P1_COLOUR)
-#     new_p2 = Player(width - 50, (height + offset) / 2, (-2, 0), P2_COLOUR)
-#     return new_p1, new_p2
-# font = pygame.font.Font(None, 72)
-# clock = pygame.time.Clock()  # used to regulate FPS
-# check_time = time.time()  # used to check collisions with rects
-# p1, p2 = new_game()
-# players = (p1, p2)
-# path = [(p1.bounding_box, '1'), (p2.bounding_box, '2')]
-# player_score = [0, 0]  # current player score
-# wall_rects = [pygame.Rect([0, offset, 15, height]) , pygame.Rect([0, offset, width, 15]),\
-#               pygame.Rect([width - 15, offset, 15, height]),\
-#               pygame.Rect([0, height - 15, width, 15])]  # outer walls of window
-# done = False
-# new = False
-# while not done:
-#     # print(clock.get_time())
-#     events = pygame.event.get()
-#     # if clock.get_time() == 0:
-#     #     events.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP))
-#         # events.append(pygame.event.Event(pygame.KEYUP, key=pygame.K_UP))
-#     for event in events:  # gets all event in last tick
-#         print(event)
-#         if event.type == pygame.QUIT:  # close button pressed
-#             done = True
-#         elif event.type == pygame.KEYDOWN:  # keyboard key pressed
-#             # === Player 1 === #
-#             if event.key == pygame.K_w:
-#                 players[0].bearing = (0, -2)
-#             elif event.key == pygame.K_s:
-#                 players[0].bearing = (0, 2)
-#             elif event.key == pygame.K_a:
-#                 players[0].bearing = (-2, 0)
-#             elif event.key == pygame.K_d:
-#                 players[0].bearing = (2, 0)
-#             elif event.key == pygame.K_TAB:
-#                 players[0].boost()
-#             # === Player 2 === #
-#             if event.key == pygame.K_UP:
-#                 players[1].bearing = (0, -2)
-#             elif event.key == pygame.K_DOWN:
-#                 players[1].bearing = (0, 2)
-#             elif event.key == pygame.K_LEFT:
-#                 players[1].bearing = (-2, 0)
-#             elif event.key == pygame.K_RIGHT:
-#                 players[1].bearing = (2, 0)
-#             elif event.key == pygame.K_RSHIFT:
-#                 players[1].boost()
-#     print("----")
-#     screen.fill(BLACK)  # clears the screen
-
-#     for r in wall_rects: pygame.draw.rect(screen, (42, 42, 42), r, 0)  # draws the walls
-
-#     for o in players:
-#         if time.time() - o.boost_start_time >= 0.5:  # limits boost to 0.5s
-#             o.boost_multiplier = 1
-
-#         if (o.bounding_box, '1') in path or (o.bounding_box, '2') in path \
-#            or o.bounding_box.collidelist(wall_rects) > -1:  # collided with path or wall
-#             # prevent player from hitting the path they just made
-#             if (time.time() - check_time) >= 0.1:
-#                 check_time = time.time()
-
-#                 if o.color == P1_COLOUR:
-#                     player_score[1] += 1
-#                 else: player_score[0] += 1
-
-#                 new = True
-#                 players = new_game()
-#                 path = [(p1.bounding_box, '1'), (p2.bounding_box, '2')]
-#                 break
-#         else:  # not yet traversed
-#             path.append((o.bounding_box, '1')) if o.color == P1_COLOUR else path.append((o.bounding_box, '2'))
-
-#         o.draw()
-#         o.move()
-
-#     for r in path:
-#         if new is True:  # empties the path - needs to be here to prevent graphical glitches
-#             path = []
-#             new = False
-#             break
-#         if r[1] == '1': pygame.draw.rect(screen, P1_COLOUR, r[0], 0)
-#         else: pygame.draw.rect(screen, P2_COLOUR, r[0], 0)
-
-#     # display the current score on the screen
-#     score_text = font.render('{0} : {1}'.format(player_score[0], player_score[1]), 1, (255, 153, 51))
-#     score_text_pos = score_text.get_rect()
-#     score_text_pos.centerx = int(width / 2)
-#     score_text_pos.centery = int(offset / 2)
-#     screen.blit(score_text, score_text_pos)
-
-#     pygame.display.flip()  # flips display
-#     clock.tick(60)  # regulates FPS
-
-# pygame.quit()
