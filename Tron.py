@@ -195,3 +195,7 @@ class Game:
 
         if not self.headless:
             pygame.quit()
+
+if __name__ == "__main__":
+    tron_game = Game()
+    tron_game.run()
