@@ -85,13 +85,13 @@ class Game:
         if p1.ai_controller:
             # remove all user key events for wasd + tab
             input_events = list(filter(lambda event: event.type != pygame.KEYDOWN or event.key != pygame.K_w or event.key != pygame.K_a or event.key != pygame.K_s or event.key != pygame.K_d or event.key != pygame.K_TAB, input_events))
-            input_events += p1.ai_controller()
+            input_events += p1.ai_controller(self.players)
         
         p2 = self.players[1]
         if p2.ai_controller:
             # remove all user key presses for arrow keys + rshift
             input_events = list(filter(lambda event: event.type != pygame.KEYDOWN or event.key != pygame.K_UP or event.key != pygame.K_LEFT or event.key != pygame.K_DOWN or event.key != pygame.K_RIGHT or event.key != pygame.K_RSHIFT, input_events))
-            input_events += p2.ai_controller()
+            input_events += p2.ai_controller(self.players)
 
         for event in input_events:
             if event.type == pygame.QUIT:
